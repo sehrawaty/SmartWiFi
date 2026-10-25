@@ -40,11 +40,18 @@ jobs:
             publish/SmartWiFi.exe
             publish/SmartWiFi.exe.sha256
 
+      # A release is published whenever <Version> in SmartWiFi.csproj has no release yet,
+      # so bumping the version on main is all it takes to ship. Pushing a v* tag works too.
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" publish/SmartWiFi.exe publish/SmartWiFi.exe.sha256 scripts/install.ps1 `
-            --title "SmartWiFi ${{ github.ref_name }}" --generate-notes
+          [xml]$proj = Get-Content src/SmartWiFi/SmartWiFi.csproj
+          $version = "v" + ($proj.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          if ($env:GITHUB_REF -like "refs/tags/v*") { $version = $env:GITHUB_REF_NAME }
+          gh release view $version *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host "$version is already released"; exit 0 }
+          gh release create $version publish/SmartWiFi.exe publish/SmartWiFi.exe.sha256 scripts/install.ps1 `
+            --target $env:GITHUB_SHA --title "SmartWiFi $version" --generate-notes
